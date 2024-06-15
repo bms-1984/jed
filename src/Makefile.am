@@ -1,0 +1,6 @@
+bin_PROGRAMS = jed
+jed_SOURCES = jed.c
+jed_LDADD = @LIBINTL@ @LIBCURL@ $(JANSSON_LIBS)
+jed_CPPFLAGS = -DLOCALEDIR=\"$(localedir)\" @LIBCURL_CPPFLAGS@
+jed_CFLAGS = $(JANSSON_CFLAGS)
+
