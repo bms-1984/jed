@@ -26,6 +26,7 @@ lib/*
 !m4
 m4/*
 !m4/libcurl.m4
+!m4/ChangeLog
 
 !doc
 doc/*
