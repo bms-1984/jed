@@ -34,6 +34,15 @@
 static int verbose;
 static int dryrun;
 static char* catalog;
+static FILE* database;
+static CURL* handle;
+
+struct buffer {
+    char *response;
+    size_t size;
+};
+
+struct buffer response;
 
 int main (int argc, char **argv) {
 #ifdef ENABLE_NLS
@@ -53,10 +62,11 @@ int main (int argc, char **argv) {
                 {"help", no_argument, 0, 'h'},
                 {"add", required_argument, 0, 'a'},
                 {"dry-run", no_argument, 0, 'd'},
+                {"output", required_argument, 0, 'o'},
                 {0, 0, 0, 0}
             };
         int option_index = 0;
-        c = getopt_long (argc, argv, "vhVa:d", long_options, &option_index);
+        c = getopt_long (argc, argv, "vhVa:do:", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -72,7 +82,8 @@ int main (int argc, char **argv) {
                       " -v, --version                    Show version\n"
                       " -V, --verbose                    Show more information\n"
                       " -a, --add <catalog_number>       Add release\n"
-                      " -d, --dry-run                    Make no changes on disk\n"));
+                      " -d, --dry-run                    Make no changes on disk\n"
+                      " -o, --output <file>              Use a database other than the default\n"));
             exit (0);
         case 'd':
             dryrun = 1;
@@ -82,14 +93,61 @@ int main (int argc, char **argv) {
             catalog = malloc (len * sizeof(char));
             memcpy (catalog, optarg, len);
             break;
+        case 'o':
+            database = fopen (optarg, "a+");
+            break;
         }
     }
-
+    if (!database)
+        database = fopen ("~/.jed/db.json", "a+");
+    handle = curl_easy_init ();
+    curl_easy_setopt (handle, CURLOPT_HEADER, 0L);
+    curl_easy_setopt (handle, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt (handle, CURLOPT_WRITEDATA, (void *)&response);
+    if (catalog) {
+        int err = add_release_to_database (database, catalog);
+        if (err)
+            error (_("could not add release to database"), err);
+    }
     free (catalog);
+    fclose (database);
+    curl_easy_cleanup (handle);
     return 0;
 }
 
 void error (const char *msg, int code) {
-    printf ("error: %s\n", msg);
+    printf (_("error: %s\n"), msg);
     exit (code);
+}
+
+size_t write_callback (char *data, size_t size, size_t nmemb, void *buffer) {
+    size_t realsize = size * nmemb;
+    struct buffer *buf = (struct buffer *)buffer;
+    char *ptr = realloc (buf->response, buf->size + realsize + 1);
+    if (!ptr)
+        return 0;
+    buf->response = ptr;
+    memcpy (&(buf->response[buf->size]), data, realsize);
+    buf->size += realsize;
+    buf->response[buf->size] = 0;
+
+    return realsize;
+}
+
+int search_by_catalog (char *catalog) {
+    char *url = malloc (200);
+    sprintf (url, "https://api.discogs.com/database/search?catno=%s&key=%s&secret=%s", catalog, KEY, SECRET);
+    curl_easy_setopt(handle, CURLOPT_URL, url);
+    CURLcode res = curl_easy_perform (handle);
+    free (url);
+    return res;
+}
+
+int add_release_to_database (FILE *db, char *catalog) {
+    int err = search_by_catalog (catalog);
+    if (err)
+        error(_("catalog number search failed"), err);
+    for (int i = 0; i < (int) response.size; i++)
+        fputc(response.response[i], db);
+    return 0;
 }

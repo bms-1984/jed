@@ -16,5 +16,9 @@
 
 #ifndef __JED_H_
 #define __JED_H_
+#include <stdio.h>
 void error (const char *msg, int code);
+int add_release_to_database (FILE *db, char *catalog);
+int search_by_catalog (char *catalog);
+size_t write_callback (char *data, size_t size, size_t nmemb, void *buffer);
 #endif
